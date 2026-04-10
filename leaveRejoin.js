@@ -31,6 +31,27 @@ function setupLeaveRejoin(bot, createBot) {
         leaveTimer = jumpTimer = jumpOffTimer = reconnectTimer = null
     }
 
+    function scheduleLeave() {
+        // Clear existing leave timer
+        if (leaveTimer) clearTimeout(leaveTimer)
+
+        // Stay connected: 2 minutes -> 15 minutes (More realistic AFK behavior)
+        const stayTime = randomMs(120000, 900000)
+
+        logThrottled(`[AFK] Will leave in ${Math.round(stayTime / 1000)} seconds`)
+
+        leaveTimer = setTimeout(() => {
+            if (stopped) return
+            logThrottled('[AFK] Leaving server (timer)')
+            cleanup()
+            try {
+                bot.quit()
+            } catch (e) {
+                // ignore if already closed
+            }
+        }, stayTime)
+    }
+
     function scheduleNextJump() {
         if (stopped || !bot.entity) return
 
@@ -38,6 +59,9 @@ function setupLeaveRejoin(bot, createBot) {
         jumpOffTimer = setTimeout(() => {
             bot.setControlState('jump', false)
         }, 300)
+
+        // Reset the leave timer on each jump - keeps bot alive while jumping
+        scheduleLeave()
 
         // random jump 20s -> 5m
         const nextJump = randomMs(20000, 5 * 60 * 1000)
@@ -80,24 +104,8 @@ function setupLeaveRejoin(bot, createBot) {
         cleanup()
         stopped = false
 
-        // Stay connected: 2 minutes -> 15 minutes (More realistic AFK behavior)
-        // Stay connected 1-5 minutes before a scheduled leave/rejoin cycle.
-        const stayTime = randomMs(60000, 300000)
-
-        logThrottled(`[AFK] Will leave in ${Math.round(stayTime / 1000)} seconds`)
-
+        scheduleLeave()
         scheduleNextJump()
-
-        leaveTimer = setTimeout(() => {
-            if (stopped) return
-            logThrottled('[AFK] Leaving server (timer)')
-            cleanup()
-            try {
-                bot.quit()
-            } catch (e) {
-                // ignore if already closed
-            }
-        }, stayTime)
     })
 
     // When the connection ends for ANY reason, just clean up our timers.
